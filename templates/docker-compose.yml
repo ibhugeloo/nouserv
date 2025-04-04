@@ -1,0 +1,118 @@
+version: '3.8'
+
+services:
+  nextcloud:
+    image: nextcloud:latest
+    container_name: ${CLIENT_NAME}-nextcloud
+    restart: unless-stopped
+    environment:
+      - MYSQL_HOST=db
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+      - NEXTCLOUD_ADMIN_USER=${NEXTCLOUD_ADMIN_USER}
+      - NEXTCLOUD_ADMIN_PASSWORD=${NEXTCLOUD_ADMIN_PASSWORD}
+    volumes:
+      - nextcloud_data:/var/www/html
+      - nextcloud_config:/var/www/html/config
+    networks:
+      - client_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${CLIENT_NAME}-nextcloud.rule=Host(`${CLIENT_NAME}.nouserv.re`)"
+      - "traefik.http.routers.${CLIENT_NAME}-nextcloud.entrypoints=websecure"
+
+  db:
+    image: mariadb:10.6
+    container_name: ${CLIENT_NAME}-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - db_data:/var/lib/mysql
+    networks:
+      - client_network
+
+  wireguard:
+    image: linuxserver/wireguard:latest
+    container_name: ${CLIENT_NAME}-wireguard
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+      - SERVERURL=${WIREGUARD_SERVER_URL}
+      - SERVERPORT=51820
+      - PEERS=${WIREGUARD_PEERS}
+    volumes:
+      - wireguard_config:/config
+      - /lib/modules:/lib/modules:ro
+    networks:
+      - client_network
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: ${CLIENT_NAME}-uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - uptime_kuma_data:/app/data
+    networks:
+      - client_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${CLIENT_NAME}-uptime.rule=Host(`status.${CLIENT_NAME}.nouserv.re`)"
+      - "traefik.http.routers.${CLIENT_NAME}-uptime.entrypoints=websecure"
+
+  rustdesk:
+    image: rustdesk/rustdesk-server:latest
+    container_name: ${CLIENT_NAME}-rustdesk
+    restart: unless-stopped
+    environment:
+      - RELAY_SERVER=true
+      - SERVER_PORT=21115
+    ports:
+      - "21115:21115"
+      - "21116:21116"
+      - "21117:21117"
+    networks:
+      - client_network
+
+  duplicati:
+    image: duplicati/duplicati:latest
+    container_name: ${CLIENT_NAME}-duplicati
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Paris
+    volumes:
+      - duplicati_data:/data
+      - duplicati_backups:/backups
+    networks:
+      - client_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${CLIENT_NAME}-duplicati.rule=Host(`backup.${CLIENT_NAME}.nouserv.re`)"
+      - "traefik.http.routers.${CLIENT_NAME}-duplicati.entrypoints=websecure"
+
+networks:
+  client_network:
+    name: ${CLIENT_NAME}_network
+    driver: bridge
+
+volumes:
+  nextcloud_data:
+  nextcloud_config:
+  db_data:
+  wireguard_config:
+  uptime_kuma_data:
+  duplicati_data:
+  duplicati_backups: 
